@@ -201,7 +201,7 @@
       <!-- Historique -->
       <div id="historique-section" class="hidden bg-white shadow rounded-lg overflow-hidden w-full">
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h3 class="text-sm font-semibold text-gray-800">Historique des devis</h3>
+          <h3 class="text-sm font-semibold text-gray-800">Historique des devis Quick-Devis</h3>
           <button onclick="effacerHistorique()"
             class="text-xs text-red-400 hover:text-red-600 transition-colors">Effacer tout</button>
         </div>
@@ -254,7 +254,7 @@
     }
 
     function formaterEuros(n) {
-      return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '\u202f€';
+      return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
     }
 
     // --- Historique localStorage ---
