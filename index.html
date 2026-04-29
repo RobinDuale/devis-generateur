@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
@@ -223,6 +224,13 @@
   </div>
 
   <script>
+    // --- Supabase ---
+    const SUPABASE_URL = 'https://nvsybsfhfcyeedqlicqq.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_U0DPJ_ozX95QYTX3tkhHkw_Mkhumrvg';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentHistorique = [];
+
     // --- Numérotation AAAAMMJJ-XXX ---
     function dateClé() {
       const d = new Date();
@@ -257,34 +265,50 @@
       return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
     }
 
-    // --- Historique localStorage ---
-    function chargerHistorique() {
-      return JSON.parse(localStorage.getItem('devis_historique') || '[]');
+    // --- Historique Supabase ---
+    async function chargerHistorique() {
+      const { data, error } = await db
+        .from('Quick-Devis')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) { console.error('Supabase charger:', error); return []; }
+      return data || [];
     }
 
-    function sauvegarderEntree(entree) {
-      const hist = chargerHistorique();
-      hist.unshift(entree);
-      localStorage.setItem('devis_historique', JSON.stringify(hist));
+    async function sauvegarderEntree(entree) {
+      const { error } = await db.from('Quick-Devis').insert([{
+        numero:      entree.numero,
+        client:      entree.client,
+        date:        entree.date,
+        montant_ttc: entree.montantTTC,
+        email:       entree._email,
+        adresse:     entree._adresse,
+        prestation:  entree._prestation,
+        jours:       entree._jours,
+        tjm:         entree._tjm,
+        conditions:  entree._conditions,
+        livraison:   entree._livraison
+      }]);
+      if (error) console.error('Supabase sauvegarder:', error);
     }
 
-    function afficherHistorique() {
-      const hist = chargerHistorique();
+    async function afficherHistorique() {
+      currentHistorique = await chargerHistorique();
       const section = document.getElementById('historique-section');
-      const tbody = document.getElementById('historique-body');
+      const tbody   = document.getElementById('historique-body');
 
-      if (hist.length === 0) {
+      if (currentHistorique.length === 0) {
         section.classList.add('hidden');
         return;
       }
 
       section.classList.remove('hidden');
-      tbody.innerHTML = hist.map((e, i) => `
+      tbody.innerHTML = currentHistorique.map((e, i) => `
         <tr class="border-t border-gray-100 hover:bg-gray-50">
           <td class="px-6 py-3 font-mono text-xs text-navy font-semibold">${e.numero}</td>
           <td class="px-6 py-3 text-gray-700">${e.client}</td>
           <td class="px-6 py-3 text-gray-500">${e.date}</td>
-          <td class="px-6 py-3 text-right font-medium text-gray-800">${e.montantTTC}</td>
+          <td class="px-6 py-3 text-right font-medium text-gray-800">${e.montant_ttc}</td>
           <td class="px-6 py-3 text-right">
             <button onclick="dupliquer(${i})"
               class="text-xs text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-400 rounded px-2 py-1 transition-colors">
@@ -295,29 +319,29 @@
       `).join('');
     }
 
-    function effacerHistorique() {
+    async function effacerHistorique() {
       if (!confirm('Effacer tout l\'historique ?')) return;
-      localStorage.removeItem('devis_historique');
-      afficherHistorique();
+      const { error } = await db.from('Quick-Devis').delete().not('id', 'is', null);
+      if (error) { console.error('Supabase effacer:', error); return; }
+      await afficherHistorique();
     }
 
     function dupliquer(index) {
-      const hist = chargerHistorique();
-      const e = hist[index];
-      document.getElementById('client').value    = e._client || '';
-      document.getElementById('email').value     = e._email || '';
-      document.getElementById('adresse').value   = e._adresse || '';
-      document.getElementById('jours').value     = e._jours || '';
-      document.getElementById('tjm').value       = e._tjm || '';
-      document.getElementById('conditions').value = e._conditions || 'Comptant';
-      document.getElementById('livraison').value  = e._livraison || '';
+      const e = currentHistorique[index];
+      document.getElementById('client').value     = e.client     || '';
+      document.getElementById('email').value      = e.email      || '';
+      document.getElementById('adresse').value    = e.adresse    || '';
+      document.getElementById('jours').value      = e.jours      || '';
+      document.getElementById('tjm').value        = e.tjm        || '';
+      document.getElementById('conditions').value = e.conditions || 'Comptant';
+      document.getElementById('livraison').value  = e.livraison  || '';
       const sel = document.getElementById('prestation');
-      for (let o of sel.options) { if (o.value === e._prestation) { o.selected = true; break; } }
+      for (let o of sel.options) { if (o.value === e.prestation) { o.selected = true; break; } }
       document.getElementById('form-panel').scrollIntoView({ behavior: 'smooth' });
     }
 
     // --- Génération ---
-    function genererDevis() {
+    async function genererDevis() {
       const client     = document.getElementById('client').value.trim();
       const email      = document.getElementById('email').value.trim();
       const adresse    = document.getElementById('adresse').value.trim();
@@ -337,29 +361,28 @@
       const numero = prochainNumero();
       const date   = dateAujourdhui();
 
-      document.getElementById('out-numero').textContent    = numero;
-      document.getElementById('out-date').textContent      = date;
-      document.getElementById('out-client').textContent    = client;
-      document.getElementById('out-email').textContent     = email;
-      document.getElementById('out-adresse').textContent   = adresse;
+      document.getElementById('out-numero').textContent     = numero;
+      document.getElementById('out-date').textContent       = date;
+      document.getElementById('out-client').textContent     = client;
+      document.getElementById('out-email').textContent      = email;
+      document.getElementById('out-adresse').textContent    = adresse;
       document.getElementById('out-prestation').textContent = prest;
-      document.getElementById('out-tjm').textContent       = formaterEuros(tjm);
-      document.getElementById('out-jours').textContent     = jours;
-      document.getElementById('out-ht').textContent        = formaterEuros(ht);
-      document.getElementById('out-total-ht').textContent  = formaterEuros(ht);
-      document.getElementById('out-total-ttc').textContent = formaterEuros(ttc);
+      document.getElementById('out-tjm').textContent        = formaterEuros(tjm);
+      document.getElementById('out-jours').textContent      = jours;
+      document.getElementById('out-ht').textContent         = formaterEuros(ht);
+      document.getElementById('out-total-ht').textContent   = formaterEuros(ht);
+      document.getElementById('out-total-ttc').textContent  = formaterEuros(ttc);
       document.getElementById('out-conditions').textContent = conditions;
-      document.getElementById('out-livraison').textContent = formaterDate(livraison);
+      document.getElementById('out-livraison').textContent  = formaterDate(livraison);
 
-      // Sauvegarde historique
-      sauvegarderEntree({
+      await sauvegarderEntree({
         numero, client, date,
         montantTTC: formaterEuros(ttc),
         _client: client, _email: email, _adresse: adresse,
         _prestation: prest, _jours: jours, _tjm: tjm,
         _conditions: conditions, _livraison: livraison
       });
-      afficherHistorique();
+      await afficherHistorique();
 
       document.getElementById('devis').classList.remove('hidden');
       document.getElementById('devis').scrollIntoView({ behavior: 'smooth' });
@@ -462,7 +485,7 @@
     }
 
     // Chargement initial
-    afficherHistorique();
+    afficherHistorique().catch(console.error);
   </script>
 </body>
 </html>
